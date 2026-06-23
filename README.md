@@ -1,4 +1,4 @@
-# ColorScope — Image Color Percentage Analyzer
+# PixelVision — Image Color Percentage Analyzer
 
 A GitHub-ready Product Management + Python prototype project that analyzes an image at pixel level and maps every pixel into 11 human-readable color categories.
 
@@ -40,7 +40,7 @@ This is not just a script. It includes:
 ## Project Structure
 
 ```text
-colorscope-image-color-analyzer/
+pixelvision-image-color-analyzer/
 ├── data/
 │   └── sample_images/
 │       ├── mona_lisa.png
