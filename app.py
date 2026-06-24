@@ -1,37 +1,49 @@
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageOps
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import colorsys
+from pathlib import Path
+import math
 
 st.set_page_config(
     page_title="PixelVision Color Analyzer",
     page_icon="🎨",
-    layout="wide"
+    layout="centered"
 )
 
+st.title("🎨 PixelVision Color Analyzer")
+st.write("Upload an image and analyze its main color distribution.")
+
 COLOR_ORDER = [
-    "Black", "Brown", "Green", "Yellow", "Red",
-    "Orange", "Pink", "Gray", "Purple", "White", "Blue"
+    "Black", "Red", "Green", "Blue", "Gray",
+    "Yellow", "Orange", "Brown", "Pink", "Purple", "White"
 ]
 
-BAR_COLORS = {
-    "White": "#FFFFFF",
+DISPLAY_COLORS = {
     "Black": "#111111",
-    "Red": "#D62728",
-    "Green": "#2CA02C",
-    "Yellow": "#FFD000",
-    "Blue": "#1F77B4",
-    "Brown": "#8C564B",
-    "Purple": "#9467BD",
-    "Pink": "#E377C2",
-    "Orange": "#FF7F0E",
-    "Gray": "#7F7F7F"
+    "Red": "#d62728",
+    "Green": "#2ca02c",
+    "Blue": "#1f77b4",
+    "Gray": "#a6a6a6",
+    "Yellow": "#f2c300",
+    "Orange": "#ff7f0e",
+    "Brown": "#8c564b",
+    "Pink": "#e377c2",
+    "Purple": "#9467bd",
+    "White": "#ffffff"
 }
 
-def map_color(rgb):
-    r, g, b = rgb
+
+def show_uploaded_image(image):
+    try:
+        st.image(image, caption="Uploaded Image", use_container_width=True)
+    except TypeError:
+        st.image(image, caption="Uploaded Image", use_column_width=True)
+
+
+def classify_color(r, g, b):
     r_norm = r / 255
     g_norm = g / 255
     b_norm = b / 255
@@ -39,76 +51,111 @@ def map_color(rgb):
     h, s, v = colorsys.rgb_to_hsv(r_norm, g_norm, b_norm)
     h = h * 360
 
-    # Brightness-based categories
-    if v < 0.18:
+    if v < 0.16:
         return "Black"
 
-    if s < 0.12 and v > 0.90:
+    if s < 0.12 and v > 0.88:
         return "White"
 
     if s < 0.18:
-        if v < 0.35:
-            return "Black"
         return "Gray"
 
-    # Brown detection
-    if 10 <= h <= 45 and v < 0.65 and s > 0.25:
+    if 15 <= h < 50 and v < 0.60 and s < 0.75:
         return "Brown"
 
-    # Hue-based categories
     if h < 15 or h >= 345:
         return "Red"
     elif 15 <= h < 40:
         return "Orange"
     elif 40 <= h < 70:
         return "Yellow"
-    elif 70 <= h < 170:
+    elif 70 <= h < 165:
         return "Green"
-    elif 170 <= h < 250:
+    elif 165 <= h < 255:
         return "Blue"
-    elif 250 <= h < 290:
+    elif 255 <= h < 295:
         return "Purple"
-    elif 290 <= h < 345:
+    elif 295 <= h < 345:
         return "Pink"
 
     return "Gray"
 
+
 def analyze_image(image):
+    image = ImageOps.exif_transpose(image)
     image = image.convert("RGB")
-    image = image.resize((300, 300))
+
+    image.thumbnail((600, 600))
 
     pixels = np.array(image).reshape(-1, 3)
 
-    counts = {color: 0 for color in COLOR_ORDER}
+    color_counts = {color: 0 for color in COLOR_ORDER}
 
-    for pixel in pixels:
-        color = map_color(pixel)
-        counts[color] += 1
+    for r, g, b in pixels:
+        color_name = classify_color(int(r), int(g), int(b))
+        color_counts[color_name] += 1
 
     total_pixels = len(pixels)
 
-    data = []
+    results = []
+    for color, count in color_counts.items():
+        percentage = (count / total_pixels) * 100
+        results.append(
+            {
+                "Color Category": color,
+                "Percentage": percentage
+            }
+        )
 
-    for color in COLOR_ORDER:
-        percentage = round((counts[color] / total_pixels) * 100, 1)
-
-        data.append({
-            "Color": color,
-            "Percentage": percentage
-        })
-
-    df = pd.DataFrame(data)
-    df = df[df["Percentage"] > 0]
+    df = pd.DataFrame(results)
     df = df.sort_values(by="Percentage", ascending=False)
-
     return df
 
-st.title("🎨 PixelVision Color Analyzer")
 
-st.write(
-    "Upload an image. The app analyzes pixels, maps similar shades into 11 color categories, "
-    "and generates a percentage distribution chart."
-)
+def plot_color_distribution(df, image_title):
+    labels = df["Color Category"].tolist()
+    values = df["Percentage"].tolist()
+
+    bar_colors = [DISPLAY_COLORS.get(label, "#1f77b4") for label in labels]
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    bars = ax.bar(
+        labels,
+        values,
+        color=bar_colors,
+        edgecolor="black"
+    )
+
+    ax.set_title(
+        f"Color Distribution: {image_title}",
+        fontsize=22,
+        fontweight="bold"
+    )
+
+    ax.set_xlabel("Color Category", fontsize=13)
+    ax.set_ylabel("Percentage of Image", fontsize=13)
+
+    max_value = max(values)
+    y_limit = max(40, math.ceil(max_value + 5))
+    ax.set_ylim(0, y_limit)
+
+    ax.tick_params(axis="x", labelrotation=35, labelsize=11)
+    ax.tick_params(axis="y", labelsize=11)
+
+    for bar, value in zip(bars, values):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.4,
+            f"{value:.1f}%",
+            ha="center",
+            va="bottom",
+            fontsize=11
+        )
+
+    plt.tight_layout()
+    return fig
+
 
 uploaded_file = st.file_uploader(
     "Upload Image",
@@ -118,59 +165,20 @@ uploaded_file = st.file_uploader(
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
 
-    image_name = uploaded_file.name
-    clean_name = image_name.replace("_", " ").replace(".png", "").replace(".jpg", "").replace(".jpeg", "").title()
+    show_uploaded_image(image)
 
-    left, right = st.columns(2)
+    if st.button("Analyze Image"):
+        df = analyze_image(image)
 
-    with left:
-        st.subheader("Uploaded Image")
-        st.image(
-            image,
-            caption="Input image",
-            use_column_width=True
-        )
+        image_title = Path(uploaded_file.name).stem
+        image_title = image_title.replace("_", " ").replace("-", " ").title()
 
-    df = analyze_image(image)
-
-    with right:
-        st.subheader("Color Distribution Chart")
-
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-        colors = [BAR_COLORS[color] for color in df["Color"]]
-
-        bars = ax.bar(
-            df["Color"],
-            df["Percentage"],
-            color=colors,
-            edgecolor="black"
-        )
-
-        ax.set_xlabel("Color Category")
-        ax.set_ylabel("Percentage of Image")
-        ax.set_title(f"Color Distribution: {clean_name}")
-
-        plt.xticks(rotation=45)
-
-        for bar, percentage in zip(bars, df["Percentage"]):
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                bar.get_height(),
-                f"{percentage}%",
-                ha="center",
-                va="bottom",
-                fontsize=10
-            )
-
-        plt.tight_layout()
+        fig = plot_color_distribution(df, image_title)
 
         st.pyplot(fig)
 
-    st.subheader("Percentage Breakdown")
-    st.dataframe(df, use_container_width=True)
-
-    st.success("Analysis complete. Take a screenshot of this result for your submission.")
+        st.subheader("Color Percentage Table")
+        st.dataframe(df)
 
 else:
-    st.info("Upload one image to generate the color percentage chart.")
+    st.info("Please upload an image to start analysis.")
